@@ -1,13 +1,22 @@
 # Fullstack FrankStyle Makefile
 
-.PHONY: dev prod prod-docker
+.PHONY: install dev prod
 
 # Default target shows available commands
 help:
 	@echo "Available commands:"
+	@echo "  make install     - Install frontend and backend dependencies"
 	@echo "  make dev         - Start development environment"
-	@echo "  make prod        - Start production environment with Docker"
-	@echo "  make prod-docker - Start production services inside Docker container"
+	@echo "  make prod        - Start production environment"
+
+# Install dependencies
+install:
+	@echo "📦 Installing dependencies..."
+	@echo "🔧 Installing backend dependencies..."
+	cd backend && pip install -r requirements.txt
+	@echo "🔧 Installing frontend dependencies..."
+	cd frontend && npm install
+	@echo "✅ All dependencies installed successfully!"
 
 # Development environment
 dev:

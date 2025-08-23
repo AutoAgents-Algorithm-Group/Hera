@@ -49,10 +49,22 @@
 # 克隆项目
 git clone https://github.com/Hehua-Fan/fullstack-frankstyle.git 
 
+# 安装依赖
+make install
+
 # 开发环境
 make dev
 
+# 传输到服务器
+rsync -avz \
+  --exclude='node_modules' \
+  --exclude='.next' \
+  --exclude='.git' \
+  --exclude='.DS_Store'\
+  --exclude='__pycache__' \
+  ./ ubuntu@your_server_ip:your_path
+
 # 生产环境
 cd docker
-docker-compose up --build -d
+docker-compose up --build
 ```
