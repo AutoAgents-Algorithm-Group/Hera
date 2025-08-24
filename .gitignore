@@ -62,9 +62,6 @@ coverage.xml
 # Poetry
 poetry.lock
 
-# Docker
-.dockerignore
-docker-compose.override.yml
 
 # Playwright browsers
 playwright/
