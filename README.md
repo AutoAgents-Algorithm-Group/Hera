@@ -51,7 +51,7 @@
 
 ```bash
 # 克隆项目
-git clone https://github.com/AutoAgents-Algorithm-Group/Hera.git 
+git clone https://github.com/Hehua-Fan/Hera.git 
 
 # 安装依赖
 make install
