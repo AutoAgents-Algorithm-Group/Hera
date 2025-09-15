@@ -27,7 +27,7 @@ dev:
 	@echo ""
 	@echo "Press Ctrl+C to stop both services"
 	@trap 'kill %1 %2' INT; \
-	cd backend && uvicorn main:app --host 0.0.0.0 --port 8000 --reload & \
+	cd backend && uvicorn API.main:app --host 0.0.0.0 --port 8000 --reload & \
 	cd frontend && npm run dev & \
 	wait
 
@@ -35,7 +35,7 @@ dev:
 prod:
 	@echo "🚀 Starting production services inside container..."
 	@echo "Starting backend service..."
-	cd backend && uvicorn main:app --host 0.0.0.0 --port 8000 &
+	cd backend && uvicorn API.main:app --host 0.0.0.0 --port 8000 &
 	@echo "Starting frontend service..."
 	cd frontend && npm start &
 	@echo "✅ Production services started inside container!"
