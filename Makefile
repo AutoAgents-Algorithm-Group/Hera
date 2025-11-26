@@ -20,7 +20,6 @@ install:
 
 # Development environment
 dev:
-dev:
 	@echo "🚀 Starting Zeus development environment..."
 	@echo "🔍 Checking and killing processes on ports 8000 and 3000..."
 	@lsof -ti:8000 | xargs kill -9 2>/dev/null || true
