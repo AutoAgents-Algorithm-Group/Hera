@@ -84,3 +84,4 @@ export type NewSession = typeof session.$inferInsert
 export type Account = typeof account.$inferSelect
 export type NewAccount = typeof account.$inferInsert
 
+

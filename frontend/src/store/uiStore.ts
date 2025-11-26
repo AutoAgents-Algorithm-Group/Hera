@@ -29,3 +29,4 @@ export const useUIStore = create<UIState>((set) => ({
   closeModal: () => set({ modalOpen: null }),
 }))
 
+
