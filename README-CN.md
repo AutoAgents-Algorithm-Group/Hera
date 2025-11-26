@@ -6,16 +6,16 @@
 
 [English](README.md) | 简体中文
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="media/dark_license.svg" />
-  <img alt="License MIT" src="media/light_license.svg" />
-</picture>
+<a href="LICENSE">
+  <img alt="License MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge" />
+</a>
 
 </div>
 
 以希腊神话中的奥林匹斯众神之后赫拉命名，这个模板为创建出色的现代应用程序提供了生产就绪架构的基础。
 
 ## 目录
+
 - [目录](#目录)
 - [为什么选择 Hera？](#为什么选择-hera)
 - [快速开始](#快速开始)
@@ -36,11 +36,13 @@ Hera 是一个革命性的全栈开发模板，让开发者能够以前所未有
 ## 快速开始
 
 **前置要求**
+
 - Node.js 18+ 和 npm
 - Python 3.11+
 - Docker（可选，用于容器化部署）
 
 **开始使用**
+
 ```bash
 # 1. 克隆仓库
 git clone https://github.com/AutoAgents-Algorithm-Group/Hera.git
@@ -55,13 +57,16 @@ make dev
 ```
 
 ## 部署
+
 **Docker**
+
 ```bash
 cd Hera
 docker compose -f docker/docker-compose.yml up -d
 ```
 
 **故障排除**
+
 ```bash
 # 查看应用日志
 docker compose -f docker/docker-compose.yml logs -f app

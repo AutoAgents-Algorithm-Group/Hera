@@ -1,0 +1,47 @@
+{
+  "auth": {
+    "signIn": {
+      "title": "Sign In",
+      "description": "Enter your email below to login to your account",
+      "email": "Email",
+      "emailPlaceholder": "m@example.com",
+      "password": "Password",
+      "passwordPlaceholder": "password",
+      "forgotPassword": "Forgot your password?",
+      "loginButton": "Login",
+      "orContinueWith": "Or continue with",
+      "signInWithGoogle": "Sign in with Google",
+      "signInWithGithub": "Sign in with Github",
+      "noAccount": "Don't have an account?",
+      "signUpLink": "Sign up"
+    },
+    "signUp": {
+      "title": "Sign Up",
+      "description": "Create an account to get started",
+      "name": "Name",
+      "namePlaceholder": "Your name",
+      "email": "Email",
+      "emailPlaceholder": "m@example.com",
+      "password": "Password",
+      "passwordPlaceholder": "password",
+      "confirmPassword": "Confirm Password",
+      "confirmPasswordPlaceholder": "Confirm your password",
+      "signUpButton": "Sign Up",
+      "orContinueWith": "Or continue with",
+      "signUpWithGoogle": "Sign up with Google",
+      "signUpWithGithub": "Sign up with Github",
+      "haveAccount": "Already have an account?",
+      "signInLink": "Sign in"
+    }
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "save": "Save",
+    "delete": "Delete"
+  }
+}
+

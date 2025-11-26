@@ -1,0 +1,21 @@
+llm_client:
+  # base_url: https://apihk.unifyllm.top/v1
+  # api_key: 
+  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  api_key: 
+
+
+agent:
+  chat_agent:
+    # model: claude-sonnet-4-20250514
+    model: qwen3-max
+    temperature: 0.7
+  research_agent:
+    model: claude-sonnet-4-20250514
+    temperature: 0.7
+  critique_subagent:
+    model: gpt-4o-mini
+    temperature: 0
+  research_subagent:
+    model: gpt-4o-mini
+    temperature: 0

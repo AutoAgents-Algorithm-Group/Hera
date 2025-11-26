@@ -1,0 +1,47 @@
+{
+  "auth": {
+    "signIn": {
+      "title": "登录",
+      "description": "在下方输入您的邮箱以登录您的账户",
+      "email": "邮箱",
+      "emailPlaceholder": "m@example.com",
+      "password": "密码",
+      "passwordPlaceholder": "密码",
+      "forgotPassword": "忘记密码？",
+      "loginButton": "登录",
+      "orContinueWith": "或继续使用",
+      "signInWithGoogle": "使用 Google 登录",
+      "signInWithGithub": "使用 Github 登录",
+      "noAccount": "还没有账户？",
+      "signUpLink": "注册"
+    },
+    "signUp": {
+      "title": "注册",
+      "description": "创建一个账户以开始使用",
+      "name": "姓名",
+      "namePlaceholder": "您的姓名",
+      "email": "邮箱",
+      "emailPlaceholder": "m@example.com",
+      "password": "密码",
+      "passwordPlaceholder": "密码",
+      "confirmPassword": "确认密码",
+      "confirmPasswordPlaceholder": "确认您的密码",
+      "signUpButton": "注册",
+      "orContinueWith": "或继续使用",
+      "signUpWithGoogle": "使用 Google 注册",
+      "signUpWithGithub": "使用 Github 注册",
+      "haveAccount": "已有账户？",
+      "signInLink": "登录"
+    }
+  },
+  "common": {
+    "loading": "加载中...",
+    "error": "错误",
+    "success": "成功",
+    "cancel": "取消",
+    "confirm": "确认",
+    "save": "保存",
+    "delete": "删除"
+  }
+}
+
