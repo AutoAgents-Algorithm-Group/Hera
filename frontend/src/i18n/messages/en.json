@@ -13,25 +13,28 @@
       "signInWithGoogle": "Sign in with Google",
       "signInWithGithub": "Sign in with Github",
       "noAccount": "Don't have an account?",
-      "signUpLink": "Sign up"
+      "signUpLink": "Sign up",
+      "loginSuccess": "Login successful! Redirecting...",
+      "googleError": "Failed to sign in with Google",
+      "githubError": "Failed to sign in with GitHub",
+      "unexpectedError": "An unexpected error occurred"
     },
     "signUp": {
       "title": "Sign Up",
-      "description": "Create an account to get started",
+      "description": "Enter your information to create an account",
       "name": "Name",
       "namePlaceholder": "Your name",
       "email": "Email",
       "emailPlaceholder": "m@example.com",
       "password": "Password",
-      "passwordPlaceholder": "password",
+      "passwordPlaceholder": "Password",
       "confirmPassword": "Confirm Password",
-      "confirmPasswordPlaceholder": "Confirm your password",
-      "signUpButton": "Sign Up",
-      "orContinueWith": "Or continue with",
-      "signUpWithGoogle": "Sign up with Google",
-      "signUpWithGithub": "Sign up with Github",
+      "confirmPasswordPlaceholder": "Confirm Password",
+      "signUpButton": "Create an account",
       "haveAccount": "Already have an account?",
-      "signInLink": "Sign in"
+      "signInLink": "Sign in",
+      "passwordMismatch": "Passwords do not match",
+      "accountCreated": "Account created successfully!"
     }
   },
   "common": {

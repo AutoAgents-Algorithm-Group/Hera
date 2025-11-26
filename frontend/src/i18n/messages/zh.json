@@ -13,11 +13,15 @@
       "signInWithGoogle": "使用 Google 登录",
       "signInWithGithub": "使用 Github 登录",
       "noAccount": "还没有账户？",
-      "signUpLink": "注册"
+      "signUpLink": "注册",
+      "loginSuccess": "登录成功！正在跳转...",
+      "googleError": "Google 登录失败",
+      "githubError": "GitHub 登录失败",
+      "unexpectedError": "发生意外错误"
     },
     "signUp": {
       "title": "注册",
-      "description": "创建一个账户以开始使用",
+      "description": "输入您的信息以创建账户",
       "name": "姓名",
       "namePlaceholder": "您的姓名",
       "email": "邮箱",
@@ -25,13 +29,12 @@
       "password": "密码",
       "passwordPlaceholder": "密码",
       "confirmPassword": "确认密码",
-      "confirmPasswordPlaceholder": "确认您的密码",
-      "signUpButton": "注册",
-      "orContinueWith": "或继续使用",
-      "signUpWithGoogle": "使用 Google 注册",
-      "signUpWithGithub": "使用 Github 注册",
+      "confirmPasswordPlaceholder": "确认密码",
+      "signUpButton": "创建账户",
       "haveAccount": "已有账户？",
-      "signInLink": "登录"
+      "signInLink": "登录",
+      "passwordMismatch": "密码不匹配",
+      "accountCreated": "账户创建成功！"
     }
   },
   "common": {

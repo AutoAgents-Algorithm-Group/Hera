@@ -97,7 +97,7 @@ Hera 是一个现代化的全栈开发模板，让开发者能够以前所未有
 
 ### 前置要求
 
-- Node.js 18+ 和 npm
+- Node.js 22+ 和 npm
 - Python 3.11+
 - PostgreSQL 数据库（或 Neon 账号）
 - Docker（可选，用于容器化部署）

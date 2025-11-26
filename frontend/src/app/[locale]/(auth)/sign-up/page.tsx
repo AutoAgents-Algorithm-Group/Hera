@@ -17,6 +17,7 @@ import { signUp } from "@/lib/auth/client";
 import toast from "react-hot-toast";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 export default function SignUp() {
 	const [name, setName] = useState("");
@@ -26,6 +27,7 @@ export default function SignUp() {
 	const router = useRouter();
 	const pathname = usePathname();
 	const [loading, setLoading] = useState(false);
+	const t = useTranslations('auth.signUp');
 	
 	// Extract locale from path
 	const locale = pathname?.split('/')[1] || 'en';
@@ -45,18 +47,18 @@ export default function SignUp() {
 				<div className="w-full max-w-md">
 					<Card>
 					<CardHeader>
-						<CardTitle className="text-lg md:text-xl">Sign Up</CardTitle>
+						<CardTitle className="text-lg md:text-xl">{t('title')}</CardTitle>
 						<CardDescription className="text-xs md:text-sm">
-							Enter your information to create an account
+							{t('description')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
 						<div className="grid gap-4">
 							<div className="grid gap-2">
-								<Label htmlFor="name">Name</Label>
+								<Label htmlFor="name">{t('name')}</Label>
 								<Input
 									id="name"
-									placeholder="Your name"
+									placeholder={t('namePlaceholder')}
 									required
 									onChange={(e) => {
 										setName(e.target.value);
@@ -65,11 +67,11 @@ export default function SignUp() {
 								/>
 							</div>
 							<div className="grid gap-2">
-								<Label htmlFor="email">Email</Label>
+								<Label htmlFor="email">{t('email')}</Label>
 								<Input
 									id="email"
 									type="email"
-									placeholder="m@example.com"
+									placeholder={t('emailPlaceholder')}
 									required
 									onChange={(e) => {
 										setEmail(e.target.value);
@@ -78,25 +80,25 @@ export default function SignUp() {
 								/>
 							</div>
 							<div className="grid gap-2">
-								<Label htmlFor="password">Password</Label>
+								<Label htmlFor="password">{t('password')}</Label>
 								<Input
 									id="password"
 									type="password"
 									value={password}
 									onChange={(e) => setPassword(e.target.value)}
 									autoComplete="new-password"
-									placeholder="Password"
+									placeholder={t('passwordPlaceholder')}
 								/>
 							</div>
 							<div className="grid gap-2">
-								<Label htmlFor="password_confirmation">Confirm Password</Label>
+								<Label htmlFor="password_confirmation">{t('confirmPassword')}</Label>
 								<Input
 									id="password_confirmation"
 									type="password"
 									value={passwordConfirmation}
 									onChange={(e) => setPasswordConfirmation(e.target.value)}
 									autoComplete="new-password"
-									placeholder="Confirm Password"
+									placeholder={t('confirmPasswordPlaceholder')}
 								/>
 							</div>
 							<Button
@@ -105,7 +107,7 @@ export default function SignUp() {
 								disabled={loading}
 								onClick={async () => {
 									if (password !== passwordConfirmation) {
-										toast.error("Passwords do not match");
+										toast.error(t('passwordMismatch'));
 										return;
 									}
 									
@@ -125,7 +127,7 @@ export default function SignUp() {
 												toast.error(ctx.error.message);
 											},
 											onSuccess: async () => {
-												toast.success("Account created successfully!");
+												toast.success(t('accountCreated'));
 												router.push(`/${locale}`);
 											},
 										},
@@ -135,16 +137,16 @@ export default function SignUp() {
 								{loading ? (
 									<Loader2 size={16} className="animate-spin" />
 								) : (
-									"Create an account"
+									t('signUpButton')
 								)}
 							</Button>
 						</div>
 					</CardContent>
 					<CardFooter>
 						<div className="text-center text-sm w-full">
-							Already have an account?{" "}
+							{t('haveAccount')}{" "}
 							<Link href={`/${locale}/sign-in`} className="underline">
-								Sign in
+								{t('signInLink')}
 							</Link>
 						</div>
 					</CardFooter>
