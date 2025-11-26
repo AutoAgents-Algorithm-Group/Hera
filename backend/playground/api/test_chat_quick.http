@@ -1,0 +1,68 @@
+### ============================================
+### 快速测试 - ChatService with DeepAgents
+### ============================================
+
+@baseUrl = http://localhost:8000
+
+### 1. 基础对话测试
+POST {{baseUrl}}/api/invoke-agent
+Content-Type: application/json
+
+{
+  "message": "你好！请介绍一下你自己",
+  "mcp_servers": []
+}
+
+### 2. 上下文记忆测试（第一轮）
+POST {{baseUrl}}/api/invoke-agent
+Content-Type: application/json
+
+{
+  "message": "我的名字是张三，我是一个程序员",
+  "session_id": "quick_test_001"
+}
+
+### 3. 上下文记忆测试（第二轮 - 应该记住之前的信息）
+POST {{baseUrl}}/api/invoke-agent
+Content-Type: application/json
+
+{
+  "message": "我是谁？我是做什么的？",
+  "chat_history": [
+    {
+      "role": "user",
+      "content": "我的名字是张三，我是一个程序员"
+    },
+    {
+      "role": "assistant",
+      "content": "你好张三！很高兴认识你这位程序员。"
+    }
+  ],
+  "session_id": "quick_test_001"
+}
+
+### 4. 文件操作测试（FilesystemMiddleware）
+POST {{baseUrl}}/api/invoke-agent
+Content-Type: application/json
+
+{
+  "message": "帮我在 /memories/ 目录下创建一个文件叫 note.txt，内容是：这是一个测试笔记"
+}
+
+### 5. 复杂推理测试
+POST {{baseUrl}}/api/invoke-agent
+Content-Type: application/json
+
+{
+  "message": "如果一个蜗牛爬树，白天爬3米，晚上滑下2米，树高10米，需要几天才能爬到树顶？"
+}
+
+###
+### 预期结果：
+### - 应该看到 SSE 流式响应
+### - 日志显示 DeepAgent 自动处理
+### - 不应该看到 while 循环的迹象
+### - 上下文应该被正确管理（170K tokens）
+###
+
+
