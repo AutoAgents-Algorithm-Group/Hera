@@ -1,0 +1,292 @@
+---
+globs: 
+  - "**/*.{ts,tsx,py,yaml,yml}"
+  - "!**/{node_modules,__pycache__,.next,dist,build}/**"
+---
+
+# Zeus Architecture Guidelines
+
+## 🏗️ System Overview
+
+Zeus is a next-generation AI multi-agent platform with a modern full-stack architecture:
+
+```
+┌─────────────────────────────────────────────┐
+│          Next.js Frontend (Port 3000)       │
+│   ├─ Better Auth + Drizzle ORM             │
+│   ├─ Shadcn/UI Components                  │
+│   └─ TypeScript + Tailwind CSS             │
+└─────────────────┬───────────────────────────┘
+                  │ HTTP/SSE
+┌─────────────────▼───────────────────────────┐
+│        Python Backend (Port 8000)           │
+│   ├─ FastAPI Framework                     │
+│   ├─ LangChain Agents                      │
+│   ├─ MCP (Model Context Protocol)          │
+│   └─ DeepAgents Research                   │
+└─────────────────┬───────────────────────────┘
+                  │
+┌─────────────────▼───────────────────────────┐
+│         PostgreSQL (Neon DB)                │
+│   ├─ User Authentication                   │
+│   ├─ Chat Sessions & Messages              │
+│   ├─ MCP Server Configurations             │
+│   └─ LangGraph Checkpoints                 │
+└─────────────────────────────────────────────┘
+```
+
+## 📁 Project Structure
+
+```
+Zeus/
+├── frontend/                    # Next.js Application
+│   ├── src/
+│   │   ├── app/                # App Router Pages
+│   │   │   ├── [locale]/       # i18n Routes
+│   │   │   └── api/            # Next.js API Routes (Proxy)
+│   │   ├── components/         # React Components
+│   │   │   ├── chat/           # Chat Interface
+│   │   │   ├── modals/         # Configuration Modals
+│   │   │   ├── layout/         # Header, Sidebar, etc.
+│   │   │   └── ui/             # Shadcn/UI Components
+│   │   ├── lib/                # Utilities
+│   │   │   ├── db/             # Database Client & Schema
+│   │   │   │   └── schema/     # Drizzle Schemas by Domain
+│   │   │   ├── auth/           # Better Auth Client
+│   │   │   ├── hooks/          # React Hooks
+│   │   │   └── message-handlers/ # SSE Message Handlers
+│   │   ├── i18n/               # Internationalization
+│   │   └── store/              # Zustand Stores
+│   └── drizzle.config.ts       # Drizzle Kit Config
+│
+├── backend/                     # Python Backend
+│   ├── src/
+│   │   ├── api/                # FastAPI Routers
+│   │   │   ├── main.py         # Main Application
+│   │   │   ├── auth.py         # Auth Endpoints
+│   │   │   ├── chats.py        # Chat Endpoints
+│   │   │   ├── sessions.py     # Session Management
+│   │   │   └── mcp.py          # MCP Validation
+│   │   ├── services/           # Business Logic
+│   │   │   ├── base_service.py # Base Service Class
+│   │   │   ├── chat_service.py # Agent Chat Service
+│   │   │   └── deep_research.py # Deep Research Service
+│   │   ├── utils/              # Utilities
+│   │   │   ├── manager/        # Configuration Managers
+│   │   │   │   ├── llm_manager.py
+│   │   │   │   ├── mcp_manager.py
+│   │   │   │   └── prompt_manager.py
+│   │   │   ├── tools/          # Custom Tools
+│   │   │   ├── logger.py       # Logging
+│   │   │   └── langgraph_checkpoint.py
+│   │   └── repository/         # Data Models
+│   │       ├── models/         # Pydantic Models
+│   │       └── prompts/        # System Prompts
+│   └── configs/                # Configuration Files
+│       ├── llm.yaml            # LLM Model Config
+│       ├── mcp.yaml            # MCP Server Config
+│       └── supabase.yaml       # Database Config
+│
+└── docker/                      # Docker Configuration
+    ├── docker-compose.yml
+    ├── Dockerfile
+    └── start.sh
+```
+
+## 🔄 Request Flow
+
+### Agent Chat Request Flow
+```
+1. User Input (Frontend)
+   └─> ChatInterface.tsx
+       └─> stream-processor.ts
+2. Next.js API Proxy
+   └─> /api/invoke-agent/route.ts
+       ├─ Verify session (Better Auth)
+       ├─ Fetch user's MCP servers from DB
+       ├─ Save message to DB
+       └─> Proxy to Python Backend
+3. Python Backend
+   └─> /api/invoke-agent (FastAPI)
+       ├─ ChatService.invoke()
+       │   ├─ Initialize LLM (via LLMManager)
+       │   ├─ Initialize MCP tools
+       │   ├─ Bind tools to model
+       │   └─ Stream response (astream)
+       └─> SSE Response Stream
+4. Frontend Processing
+   └─> SSE handlers process chunks
+       ├─ text-handler.ts
+       ├─ tool-call-handler.ts
+       ├─ tool-result-handler.ts
+       └─ complete-handler.ts
+```
+
+### Deep Research Request Flow
+```
+1. User Query (Frontend)
+   └─> ChatInterface.tsx
+2. Next.js API Proxy
+   └─> /api/invoke-deep-research/route.ts
+3. Python Backend
+   └─> /api/invoke-deep-research (FastAPI)
+       ├─ DeepResearchService.invoke()
+       │   ├─ Create DeepAgents agent
+       │   ├─ Stream via LangGraph
+       │   └─ Save checkpoints (DrizzleCheckpointSaver)
+       └─> SSE Response Stream
+           ├─ todo: TodoList generation
+           ├─ think: Agent thinking process
+           ├─ task: Task execution updates
+           ├─ tool_call: Tool invocations
+           └─ complete: Research complete
+```
+
+## 🔌 API Design Principles
+
+### 1. Backend API (Python FastAPI)
+**Purpose**: Pure AI/Agent logic, no database operations
+
+**Endpoints**:
+- `POST /api/invoke-agent` - Agent mode chat with tool calling
+- `POST /api/invoke-deep-research` - Start deep research
+- `POST /api/resume-deep-research` - Resume paused research
+- `POST /api/mcp/validate` - Validate MCP server connection
+
+**Response Format**: Server-Sent Events (SSE)
+```
+data: {"type": "text", "content": "..."}
+data: {"type": "tool_call", "tool_name": "...", "parameters": {...}}
+data: {"type": "tool_call_result", "result": "..."}
+data: {"type": "complete"}
+```
+
+### 2. Frontend API (Next.js API Routes)
+**Purpose**: Authentication, database operations, proxy to backend
+
+**Endpoints**:
+- `GET/POST/PUT/DELETE /api/mcp` - MCP server CRUD
+- `POST /api/mcp/validate` - Validate MCP server
+- `POST /api/auth/[...all]` - Better Auth endpoints
+- `POST /api/invoke-agent` - Proxy to Python backend
+- `POST /api/invoke-deep-research` - Proxy to Python backend
+- `POST /api/resume-deep-research` - Proxy to Python backend
+
+## 📦 Key Technologies
+
+### Frontend Stack
+- **Framework**: Next.js 16 (App Router)
+- **Language**: TypeScript
+- **UI**: Shadcn/UI + Radix UI + Tailwind CSS
+- **Auth**: Better Auth (replaces Supabase Auth)
+- **Database**: Drizzle ORM + PostgreSQL
+- **State**: React Context + Zustand
+- **i18n**: next-intl (English + Chinese)
+
+### Backend Stack
+- **Framework**: FastAPI
+- **Language**: Python 3.11+
+- **AI**: LangChain + LangGraph
+- **Agents**: DeepAgents
+- **Tools**: langchain-mcp-adapters
+- **Config**: YAML-based configuration
+
+### Database
+- **Provider**: Neon (PostgreSQL)
+- **ORM**: Drizzle ORM (TypeScript)
+- **Schema**: Organized by domain
+  - `user.ts` - Better Auth tables
+  - `chat.ts` - Chat sessions & messages
+  - `mcp.ts` - MCP server configurations
+  - `langgraph.ts` - LangGraph checkpoints
+
+## 🎯 Architectural Patterns
+
+### 1. Service Layer Pattern (Backend)
+All AI services inherit from `BaseService`:
+```python
+class BaseService(ABC):
+    def _init_model(self) -> LLM
+    async def _init_mcp_tools(self, mcp_servers) -> List[Tool]
+    def _build_message_history(self, chat_history) -> List[Message]
+    async def _handle_error(self, error) -> AsyncGenerator
+    
+    @abstractmethod
+    async def invoke(self, *args, **kwargs) -> AsyncGenerator
+```
+
+### 2. Repository Pattern (Frontend)
+Database operations centralized in Next.js API routes:
+- User authentication handled by Better Auth
+- Business data (chat, mcp) via Drizzle ORM
+- All operations behind authentication checks
+
+### 3. Proxy Pattern (API Routes)
+Next.js API routes act as authenticated proxies:
+- Verify user session
+- Perform database operations
+- Forward to Python backend with context
+- Return streaming responses
+
+### 4. Message Handler Pattern (Frontend)
+SSE message processing split by type:
+- `text-handler.ts` - Text chunks
+- `tool-call-handler.ts` - Tool invocations
+- `tool-result-handler.ts` - Tool results
+- `complete-handler.ts` - Completion
+- `error-handler.ts` - Errors
+
+## 🔐 Security Architecture
+
+1. **Authentication**: Better Auth with GitHub OAuth
+2. **Session Management**: JWT tokens + database sessions
+3. **API Security**: Session verification in all API routes
+4. **Database Security**: User-scoped queries with foreign keys
+5. **MCP Security**: Per-user MCP server configurations
+
+## 📊 Data Flow Architecture
+
+### User-Specific Data
+All user data isolated by `userId`:
+- Chat sessions
+- Messages
+- MCP server configurations
+- LangGraph checkpoints (optional)
+
+### Configuration Management
+- **Global**: `backend/configs/*.yaml` (LLM, default MCP)
+- **User-Specific**: Database (user's custom MCP servers)
+- **Runtime**: Service initialization from both sources
+
+## 🚀 Deployment Architecture
+
+### Development
+```bash
+make dev  # Runs frontend + backend concurrently
+```
+
+### Production (Docker)
+```yaml
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"  # Next.js frontend
+      - "8000:8000"  # FastAPI backend
+    environment:
+      - DATABASE_URL
+      - AUTH_SECRET
+      - GITHUB_CLIENT_ID
+      - GITHUB_CLIENT_SECRET
+```
+
+## 📝 Best Practices
+
+1. **Separation of Concerns**: Frontend for UI/Auth/DB, Backend for AI logic
+2. **Type Safety**: TypeScript frontend, Pydantic backend
+3. **Modularity**: Services, handlers, and schemas organized by domain
+4. **Configuration**: YAML for backend, env vars for secrets
+5. **Error Handling**: Consistent patterns across layers
+6. **Logging**: Structured logging with context
+7. **Streaming**: SSE for real-time AI responses
+8. **Checkpointing**: LangGraph state persistence for long-running tasks

@@ -1,0 +1,375 @@
+---
+globs:
+  - "frontend/src/lib/auth/**"
+  - "frontend/src/app/[locale]/{sign-in,sign-up}/**"
+  - "frontend/src/app/api/auth/[...all]/route.ts"
+---
+
+# Zeus Authentication System
+
+## 🔐 Authentication Stack
+
+Zeus uses **Better Auth** instead of Supabase Auth for a more flexible and type-safe authentication system.
+
+### Technology Stack
+- **Auth Library**: [Better Auth](https://www.better-auth.com/)
+- **ORM**: Drizzle ORM
+- **Database**: PostgreSQL (Neon)
+- **OAuth Providers**: GitHub (extensible)
+- **Session Storage**: Database-backed sessions
+
+## 📁 Authentication Structure
+
+```
+frontend/src/
+├── lib/
+│   ├── auth/
+│   │   ├── index.ts           # Better Auth Server Config
+│   │   └── client.ts          # Better Auth Client Hooks
+│   └── db/
+│       └── schema/
+│           └── user.ts        # Auth Tables Schema
+├── app/
+│   ├── [locale]/
+│   │   ├── sign-in/
+│   │   │   └── page.tsx       # Sign In Page
+│   │   └── sign-up/
+│   │       └── page.tsx       # Sign Up Page
+│   ├── api/
+│   │   └── auth/
+│   │       └── [..all]/
+│   │           └── route.ts   # Better Auth API Handler
+│   └── auth/
+│       └── callback/
+│           └── route.ts       # OAuth Callback Handler
+└── contexts/
+    └── AuthContext.tsx        # Auth State Management
+```
+
+## 🗄️ Database Schema
+
+### User Table
+```typescript
+export const user = pgTable('user', {
+  id: text('id').primaryKey(),
+  name: text('name'),  // Nullable for OAuth users
+  email: text('email').notNull().unique(),
+  emailVerified: boolean('emailVerified').notNull().default(false),
+  image: text('image'),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})
+```
+
+### Session Table
+```typescript
+export const session = pgTable('session', {
+  id: text('id').primaryKey(),
+  expiresAt: timestamp('expiresAt').notNull(),
+  token: text('token').notNull().unique(),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+  ipAddress: text('ipAddress'),
+  userAgent: text('userAgent'),
+  userId: text('userId')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+})
+```
+
+### Account Table (OAuth)
+```typescript
+export const account = pgTable('account', {
+  id: text('id').primaryKey(),
+  accountId: text('accountId').notNull(),
+  providerId: text('providerId').notNull(),
+  userId: text('userId')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  accessToken: text('accessToken'),
+  refreshToken: text('refreshToken'),
+  idToken: text('idToken'),
+  accessTokenExpiresAt: timestamp('accessTokenExpiresAt'),
+  refreshTokenExpiresAt: timestamp('refreshTokenExpiresAt'),
+  scope: text('scope'),
+  password: text('password'),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})
+```
+
+### Verification Table
+```typescript
+export const verification = pgTable('verification', {
+  id: text('id').primaryKey(),
+  identifier: text('identifier').notNull(),
+  value: text('value').notNull(),
+  expiresAt: timestamp('expiresAt').notNull(),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})
+```
+
+## ⚙️ Better Auth Configuration
+
+### Server Configuration
+Location: `frontend/src/lib/auth/index.ts`
+
+```typescript
+import { betterAuth } from "better-auth"
+import { drizzleAdapter } from "better-auth/adapters/drizzle"
+import { db } from "@/lib/db"
+
+export const auth = betterAuth({
+  database: drizzleAdapter(db, {
+    provider: "pg",
+  }),
+  emailAndPassword: {
+    enabled: true,
+  },
+  socialProviders: {
+    github: {
+      clientId: process.env.GITHUB_CLIENT_ID as string,
+      clientSecret: process.env.GITHUB_CLIENT_SECRET as string,
+      enabled: true,
+    },
+  },
+  trustedOrigins: [
+    "http://localhost:3000",
+    process.env.NEXT_PUBLIC_APP_URL as string,
+  ],
+})
+```
+
+### Client Configuration
+Location: `frontend/src/lib/auth/client.ts`
+
+```typescript
+import { createAuthClient } from "better-auth/react"
+
+export const authClient = createAuthClient({
+  baseURL: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+})
+
+export const {
+  signIn,
+  signUp,
+  signOut,
+  useSession,
+  // ... other hooks
+} = authClient
+```
+
+## 🔑 Environment Variables
+
+Required environment variables in `frontend/.env.local`:
+
+```env
+# Database
+DATABASE_URL="postgresql://..."
+
+# Better Auth
+AUTH_SECRET="your-secret-key"  # Generate with: openssl rand -base64 32
+
+# GitHub OAuth
+GITHUB_CLIENT_ID="your-github-client-id"
+GITHUB_CLIENT_SECRET="your-github-client-secret"
+
+# App URL
+NEXT_PUBLIC_APP_URL="http://localhost:3000"
+```
+
+## 🎯 Authentication Flow
+
+### GitHub OAuth Flow
+```
+1. User clicks "Sign in with GitHub"
+   └─> signIn.social({ provider: "github" })
+
+2. Redirect to GitHub
+   └─> GitHub authorization page
+
+3. GitHub callback
+   └─> /auth/callback/route.ts
+       ├─ Exchange code for tokens
+       ├─ Create/update user in database
+       └─> Redirect to home page
+
+4. Session established
+   └─> useSession() returns user data
+```
+
+### Email/Password Flow
+```
+1. User submits credentials
+   └─> signIn.email({ email, password })
+
+2. Better Auth verification
+   ├─ Check credentials
+   └─ Create session
+
+3. Session established
+   └─> useSession() returns user data
+```
+
+## 📝 Usage Examples
+
+### Sign In Page
+```typescript
+"use client"
+
+import { signIn } from "@/lib/auth/client"
+import { useState } from "react"
+
+export default function SignInPage() {
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+
+  const handleEmailSignIn = async () => {
+    await signIn.email({ 
+      email, 
+      password,
+      callbackURL: "/",
+    })
+  }
+
+  const handleGitHubSignIn = async () => {
+    await signIn.social({
+      provider: "github",
+      callbackURL: "/",
+    })
+  }
+
+  return (
+    <div>
+      {/* Email/Password Form */}
+      <input value={email} onChange={(e) => setEmail(e.target.value)} />
+      <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+      <button onClick={handleEmailSignIn}>Sign In</button>
+
+      {/* GitHub OAuth */}
+      <button onClick={handleGitHubSignIn}>
+        Sign in with GitHub
+      </button>
+    </div>
+  )
+}
+```
+
+### Protected API Route
+```typescript
+import { auth } from "@/lib/auth"
+import { NextRequest, NextResponse } from "next/server"
+
+export async function GET(req: NextRequest) {
+  // Verify session
+  const session = await auth.api.getSession({
+    headers: req.headers,
+  })
+
+  if (!session?.user) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    )
+  }
+
+  // User is authenticated
+  const userId = session.user.id
+  
+  // ... your logic here
+}
+```
+
+### Using Session in Components
+```typescript
+"use client"
+
+import { useSession, signOut } from "@/lib/auth/client"
+
+export default function UserProfile() {
+  const { data: session, isPending } = useSession()
+
+  if (isPending) {
+    return <div>Loading...</div>
+  }
+
+  if (!session) {
+    return <div>Not signed in</div>
+  }
+
+  return (
+    <div>
+      <p>Welcome, {session.user.name}</p>
+      <img src={session.user.image} alt="Avatar" />
+      <button onClick={() => signOut()}>Sign Out</button>
+    </div>
+  )
+}
+```
+
+## 🛡️ Security Best Practices
+
+### 1. Session Management
+- Sessions stored in database
+- Automatic session expiration
+- Secure token generation
+- IP address and user agent tracking
+
+### 2. OAuth Security
+- State parameter validation
+- PKCE flow for public clients
+- Secure token storage
+- Automatic token refresh
+
+### 3. Password Security
+- Hashed with bcrypt
+- Never stored in plain text
+- Password reset via email verification
+
+### 4. API Protection
+All API routes should verify session:
+```typescript
+const session = await auth.api.getSession({
+  headers: req.headers,
+})
+
+if (!session?.user) {
+  return NextResponse.json(
+    { error: "Unauthorized" },
+    { status: 401 }
+  )
+}
+```
+
+## 🔧 GitHub OAuth Setup
+
+### Create GitHub OAuth App
+1. Go to GitHub Settings > Developer settings > OAuth Apps
+2. Click "New OAuth App"
+3. Set application details:
+   - **Application name**: Zeus
+   - **Homepage URL**: `http://localhost:3000`
+   - **Authorization callback URL**: `http://localhost:3000/api/auth/callback/github`
+4. Save `Client ID` and `Client Secret` to `.env.local`
+
+### Authorization Callback URL
+- **Development**: `http://localhost:3000/api/auth/callback/github`
+- **Production**: `https://yourdomain.com/api/auth/callback/github`
+
+## 🐛 Common Issues
+
+### Issue: GitHub OAuth Login Stays on Sign-In Page
+**Solution**: Check callback URL configuration matches GitHub app settings
+
+### Issue: Session Not Persisting
+**Solution**: Verify `AUTH_SECRET` is set and consistent across requests
+
+### Issue: User Creation Fails
+**Solution**: Ensure database schema is up to date with `npx drizzle-kit push --force`
+
+## 📚 Resources
+
+- [Better Auth Documentation](https://www.better-auth.com/docs)
+- [Drizzle ORM Guide](https://orm.drizzle.team/docs/overview)
+- [GitHub OAuth Documentation](https://docs.github.com/en/apps/oauth-apps)

@@ -1,0 +1,605 @@
+---
+globs:
+  - "backend/src/services/**/*.py"
+  - "backend/src/utils/**/*.py"
+  - "backend/src/repository/**/*.py"
+  - "backend/configs/**/*.yaml"
+---
+
+# Zeus Agent System
+
+## 🤖 Agent Architecture
+
+Zeus uses LangChain and LangGraph for building intelligent agents with tool-calling capabilities.
+
+### Core Technologies
+- **LangChain**: Agent framework and tool abstractions
+- **LangGraph**: Stateful workflow orchestration
+- **DeepAgents**: Multi-agent research system
+- **MCP**: Model Context Protocol for tool integration
+- **langchain-mcp-adapters**: MCP-to-LangChain bridge
+
+## 📁 Agent Structure
+
+```
+backend/src/
+├── services/                # Agent Services
+│   ├── base_service.py     # Abstract Base Service
+│   ├── chat_service.py     # Agent Chat Service
+│   └── deep_research.py    # Deep Research Service
+├── utils/
+│   ├── manager/            # Configuration Managers
+│   │   ├── llm_manager.py  # LLM initialization
+│   │   ├── mcp_manager.py  # MCP server management
+│   │   └── prompt_manager.py # Prompt templates
+│   ├── tools/              # Custom Tools
+│   │   └── tavily_search.py # Web search tool
+│   └── langgraph_checkpoint.py # Checkpoint persistence
+├── repository/
+│   ├── models/             # Pydantic Models
+│   │   ├── chats.py        # Request/Response models
+│   │   └── sse_messages.py # SSE message types
+│   └── prompts/            # System Prompts
+│       └── chat_agent.md   # Agent system prompt
+└── configs/
+    ├── llm.yaml            # LLM configurations
+    └── mcp.yaml            # MCP server configurations
+```
+
+## 🎯 Service Layer
+
+### Base Service Pattern
+All AI services inherit from `BaseService`:
+
+```python
+from abc import ABC, abstractmethod
+from typing import AsyncGenerator
+
+class BaseService(ABC):
+    """Base service for all AI agents"""
+    
+    def __init__(self, agent_name: str = "chat_agent", streaming: bool = True):
+        self.agent_name = agent_name
+        self.streaming = streaming
+        self.llm = None
+        self.mcp_tools = []
+    
+    def _init_model(self, agent_name: str = None, streaming: bool = None):
+        """Initialize LLM model from configuration"""
+        llm_manager = LLMManager()
+        return llm_manager.create_model(
+            agent_name=agent_name or self.agent_name,
+            streaming=streaming if streaming is not None else self.streaming
+        )
+    
+    async def _init_mcp_tools(self, mcp_servers):
+        """Initialize MCP tools from server configurations"""
+        if not mcp_servers:
+            return []
+        
+        # Convert server configs to MCPServerConfig
+        server_configs = []
+        for config in mcp_servers:
+            server_config = MCPServerConfig(
+                name=config.get('name') or config.get('serverName'),
+                base_url=config.get('base_url') or config.get('baseUrl'),
+                transport_type=config.get('transport_type') or config.get('transportType'),
+                api_key=config.get('api_key') or config.get('apiKey'),
+                headers=config.get('headers') or {}
+            )
+            server_configs.append(server_config)
+        
+        # Initialize MCP client
+        client = MultiServerMCPClient(server_configs=server_configs)
+        tools = await client.get_tools()
+        
+        return tools
+    
+    def _build_message_history(
+        self, 
+        chat_history: List[Dict], 
+        max_messages: int = 10
+    ) -> List[Message]:
+        """Convert chat history to LangChain messages"""
+        messages = []
+        for msg in chat_history[-max_messages:]:
+            if msg['role'] == 'user':
+                messages.append(HumanMessage(content=msg['content']))
+            elif msg['role'] == 'assistant':
+                messages.append(AIMessage(content=msg['content']))
+            elif msg['role'] == 'system':
+                messages.append(SystemMessage(content=msg['content']))
+        return messages
+    
+    async def _handle_error(
+        self, 
+        error: Exception, 
+        context: str = "操作"
+    ) -> AsyncGenerator[str, None]:
+        """Unified error handling"""
+        logger.error(f"❌ {context}失败: {error}", exc_info=True)
+        
+        error_msg = ErrorMessage(
+            error=f"{context}失败: {str(error)}",
+            error_code=f"{self.__class__.__name__.lower()}_error"
+        )
+        yield error_msg.to_sse()
+    
+    @abstractmethod
+    async def invoke(self, *args, **kwargs) -> AsyncGenerator[str, None]:
+        """Execute agent logic (must be implemented by subclasses)"""
+        pass
+```
+
+### Chat Service (Agent Mode)
+Location: `backend/src/services/chat_service.py`
+
+**Features**:
+- Streaming responses with `astream()`
+- Tool calling with MCP servers
+- Multi-turn conversations
+- Error handling
+
+```python
+class ChatService(BaseService):
+    """LangChain chat service with tool calling"""
+    
+    def __init__(self):
+        super().__init__(agent_name="chat_agent", streaming=True)
+        self.llm = self._init_model()
+    
+    async def invoke(
+        self,
+        message: str,
+        mcp_servers: Optional[List] = None,
+        chat_history: Optional[List[Dict]] = None,
+        **kwargs
+    ) -> AsyncGenerator[str, None]:
+        """Agent mode chat with streaming"""
+        
+        # Initialize tools
+        all_tools = []
+        if mcp_servers:
+            self.mcp_tools = await self._init_mcp_tools(mcp_servers)
+            all_tools.extend(self.mcp_tools)
+        
+        # Bind tools to model
+        if all_tools:
+            llm_with_tools = self.llm.bind_tools(all_tools)
+        else:
+            llm_with_tools = self.llm
+        
+        # Build message history
+        messages = self._build_message_history(chat_history)
+        messages.append(HumanMessage(content=message))
+        
+        # Execution loop with tool calling
+        max_iterations = 10
+        iteration = 0
+        
+        while iteration < max_iterations:
+            iteration += 1
+            
+            # Stream response
+            full_response_content = ""
+            response_tool_calls = []
+            
+            async for chunk in llm_with_tools.astream(messages):
+                # Stream text content
+                if hasattr(chunk, 'content') and chunk.content:
+                    full_response_content += chunk.content
+                    text_msg = TextMessage(
+                        content=chunk.content,
+                        role="assistant"
+                    )
+                    yield text_msg.to_sse()
+                
+                # Collect tool calls
+                if hasattr(chunk, 'tool_calls') and chunk.tool_calls:
+                    response_tool_calls.extend(chunk.tool_calls)
+            
+            # Add response to history
+            if full_response_content or response_tool_calls:
+                messages.append(AIMessage(
+                    content=full_response_content,
+                    tool_calls=response_tool_calls
+                ))
+            
+            # No tools to call, done
+            if not response_tool_calls:
+                break
+            
+            # Execute tools
+            for tool_call in response_tool_calls:
+                tool_call_id = getattr(tool_call, "id", f"call_{iteration}")
+                tool_name = getattr(tool_call, "name", "unknown")
+                tool_args = getattr(tool_call, "args", {})
+                
+                # Send tool call message
+                tool_call_msg = ToolCallMessage(
+                    tool_call_id=tool_call_id,
+                    tool_name=tool_name,
+                    parameters=tool_args,
+                    status="running"
+                )
+                yield tool_call_msg.to_sse()
+                
+                # Execute tool
+                try:
+                    tool = next((t for t in all_tools if t.name == tool_name), None)
+                    if tool:
+                        result = await tool.ainvoke(tool_args)
+                        
+                        # Send result
+                        tool_result_msg = ToolCallResultMessage(
+                            tool_call_id=tool_call_id,
+                            tool_name=tool_name,
+                            result=result,
+                            is_error=False
+                        )
+                        yield tool_result_msg.to_sse()
+                        
+                        # Add to history
+                        messages.append(ToolMessage(
+                            content=str(result),
+                            tool_call_id=tool_call_id
+                        ))
+                    else:
+                        raise ValueError(f"Tool {tool_name} not found")
+                        
+                except Exception as e:
+                    # Tool execution failed
+                    tool_result_msg = ToolCallResultMessage(
+                        tool_call_id=tool_call_id,
+                        tool_name=tool_name,
+                        result=None,
+                        is_error=True,
+                        error_message=str(e)
+                    )
+                    yield tool_result_msg.to_sse()
+                    
+                    messages.append(ToolMessage(
+                        content=f"错误: {str(e)}",
+                        tool_call_id=tool_call_id
+                    ))
+        
+        # Send completion
+        complete_msg = CompleteMessage(content="对话完成")
+        yield complete_msg.to_sse()
+```
+
+### Deep Research Service
+Location: `backend/src/services/deep_research.py`
+
+**Features**:
+- Multi-agent research workflow
+- TodoList generation with confirmation
+- Parallel sub-agent execution
+- Checkpointing for pause/resume
+- Virtual file system
+
+```python
+class DeepResearchService(BaseService):
+    """Deep research service powered by DeepAgents"""
+    
+    def __init__(self):
+        super().__init__(agent_name="research_agent", streaming=False)
+        
+        # Initialize Tavily search tool
+        self.tavily_tool = TavilySearchTool()
+        
+        # Initialize checkpointer
+        try:
+            self.checkpointer = create_drizzle_checkpointer(
+                api_url=os.getenv("NEXTJS_API_URL", "http://localhost:3000")
+            )
+        except Exception as e:
+            logger.warning(f"⚠️ DrizzleCheckpointSaver failed, using MemorySaver: {e}")
+            self.checkpointer = MemorySaver()
+        
+        # Create DeepAgents agent
+        self.agent = self._create_agent()
+    
+    def _create_agent(self):
+        """Create DeepAgents agent with LangGraph"""
+        from deepagents import create_deep_agent
+        
+        # Initialize LLMs for different roles
+        main_llm = self._init_model(agent_name="research_agent")
+        sub_llm = self._init_model(agent_name="research_subagent")
+        critique_llm = self._init_model(agent_name="critique_subagent")
+        
+        # Create deep agent
+        agent = create_deep_agent(
+            model=main_llm,
+            sub_model=sub_llm,
+            critique_model=critique_llm,
+            search_tool=self.internet_search,
+            checkpointer=self.checkpointer,
+        )
+        
+        return agent
+    
+    async def invoke(
+        self,
+        query: str,
+        chat_history: Optional[List[Dict]] = None,
+        skip_clarification: bool = False,
+        continue_research: bool = False,
+        thread_id: Optional[str] = None,
+        resume: bool = False,
+        confirmed: bool = True
+    ) -> AsyncGenerator[str, None]:
+        """Execute deep research"""
+        
+        # Generate or use provided thread_id
+        if not thread_id:
+            thread_id = str(uuid.uuid4())
+        
+        logger.info(f"🚀 Start DeepResearch | thread_id: {thread_id} | resume: {resume}")
+        
+        try:
+            # Configuration
+            config = {"configurable": {"thread_id": thread_id}}
+            
+            # Input data
+            if resume:
+                input_data = None  # Resume from checkpoint
+            else:
+                input_data = {"messages": [{"role": "user", "content": query}]}
+            
+            # Stream processing
+            async for chunk in self.agent.astream(input_data, config):
+                # Process different chunk types
+                if "todo" in chunk:
+                    # TodoList generated
+                    todo_msg = TodoMessage(
+                        content=chunk["todo"],
+                        requires_confirmation=True
+                    )
+                    yield todo_msg.to_sse()
+                
+                elif "think" in chunk:
+                    # Agent thinking
+                    think_msg = ThinkMessage(
+                        content=chunk["think"]
+                    )
+                    yield think_msg.to_sse()
+                
+                elif "task" in chunk:
+                    # Task execution update
+                    task_msg = TaskMessage(
+                        task_id=chunk.get("task_id"),
+                        content=chunk["task"],
+                        status=chunk.get("status", "running")
+                    )
+                    yield task_msg.to_sse()
+                
+                elif "tool_call" in chunk:
+                    # Tool invocation
+                    tool_call_msg = ToolCallMessage(
+                        tool_name=chunk["tool_call"]["name"],
+                        parameters=chunk["tool_call"]["args"]
+                    )
+                    yield tool_call_msg.to_sse()
+            
+            # Send completion
+            complete_msg = CompleteMessage(content="研究完成")
+            yield complete_msg.to_sse()
+            
+        except Exception as e:
+            async for error_sse in self._handle_error(e, "深度研究"):
+                yield error_sse
+```
+
+## ⚙️ Configuration
+
+### LLM Configuration
+Location: `backend/configs/llm.yaml`
+
+```yaml
+agent:
+  chat_agent:
+    model: "gpt-4o-mini"
+    temperature: 0.7
+    max_tokens: 4096
+    
+  research_agent:
+    model: "gpt-4o"
+    temperature: 0.5
+    max_tokens: 8192
+    
+  research_subagent:
+    model: "gpt-4o-mini"
+    temperature: 0.3
+    max_tokens: 4096
+    
+  critique_subagent:
+    model: "gpt-4o-mini"
+    temperature: 0.2
+    max_tokens: 2048
+```
+
+### MCP Configuration
+Location: `backend/configs/mcp.yaml`
+
+```yaml
+# Default MCP servers (shared across users)
+servers:
+  filesystem:
+    url: "http://localhost:8080/mcp"
+    transport: "streamable_http"
+    
+  brave-search:
+    url: "http://localhost:8081/mcp"
+    transport: "streamable_http"
+    api_key: "${BRAVE_API_KEY}"
+```
+
+**Note**: User-specific MCP servers are stored in database (`mcp_server` table).
+
+## 📤 SSE Message Types
+
+### Text Message
+```python
+class TextMessage(BaseMessage):
+    type: Literal["text"] = "text"
+    content: str
+    role: str = "assistant"
+```
+
+### Tool Call Message
+```python
+class ToolCallMessage(BaseMessage):
+    type: Literal["tool_call"] = "tool_call"
+    tool_call_id: str
+    tool_name: str
+    parameters: Dict[str, Any]
+    status: str = "running"
+```
+
+### Tool Call Result
+```python
+class ToolCallResultMessage(BaseMessage):
+    type: Literal["tool_call_result"] = "tool_call_result"
+    tool_call_id: str
+    tool_name: str
+    result: Optional[str]
+    is_error: bool = False
+    error_message: Optional[str] = None
+```
+
+### Complete Message
+```python
+class CompleteMessage(BaseMessage):
+    type: Literal["complete"] = "complete"
+    content: str = "Complete"
+```
+
+### Error Message
+```python
+class ErrorMessage(BaseMessage):
+    type: Literal["error"] = "error"
+    error: str
+    error_code: Optional[str] = None
+    details: Optional[Dict[str, Any]] = None
+```
+
+## 🔧 Tool Integration
+
+### MCP Tool Loading
+```python
+from langchain_mcp_adapters import MultiServerMCPClient, MCPServerConfig
+
+# Initialize MCP client with server configurations
+server_configs = [
+    MCPServerConfig(
+        name="filesystem",
+        base_url="http://localhost:8080/mcp",
+        transport_type="streamable_http"
+    ),
+    MCPServerConfig(
+        name="web-search",
+        base_url="http://localhost:8081/mcp",
+        transport_type="sse",
+        api_key="your-api-key"
+    )
+]
+
+client = MultiServerMCPClient(server_configs=server_configs)
+tools = await client.get_tools()
+
+# Bind tools to model
+llm_with_tools = llm.bind_tools(tools)
+```
+
+### Custom Tool Example
+```python
+from langchain_core.tools import Tool
+
+def custom_search(query: str) -> str:
+    """Search the web for information"""
+    # Implementation
+    return results
+
+search_tool = Tool(
+    name="web_search",
+    description="Search the web for current information",
+    func=custom_search
+)
+```
+
+## 🎯 Best Practices
+
+### 1. Service Design
+- Inherit from `BaseService` for consistency
+- Implement `invoke()` as async generator
+- Use streaming responses (`astream()`)
+- Handle errors gracefully
+
+### 2. Tool Management
+- Initialize tools in `__init__` or `invoke()`
+- Use MCP for external tool integrations
+- Validate tool inputs before execution
+- Return structured results
+
+### 3. Message Handling
+- Build proper message history
+- Limit history size (e.g., last 10 messages)
+- Include tool messages in history
+- Clear separation of user/assistant/system messages
+
+### 4. Error Handling
+- Log errors with context
+- Send error messages via SSE
+- Include error details for debugging
+- Don't expose sensitive information
+
+### 5. Configuration
+- Use YAML for static configuration
+- Environment variables for secrets
+- Database for user-specific settings
+- Validate configuration on startup
+
+## 📊 Monitoring & Logging
+
+### Logging Pattern
+```python
+from ..utils.logger import logger
+
+logger.info(f"🚀 Starting agent | query: {query[:100]}...")
+logger.debug(f"📦 Loaded {len(tools)} tools")
+logger.warning(f"⚠️ Tool execution slow: {duration}s")
+logger.error(f"❌ Agent failed: {error}", exc_info=True)
+```
+
+### Performance Tracking
+```python
+import time
+
+start_time = time.time()
+# ... agent execution ...
+duration = time.time() - start_time
+logger.info(f"✅ Agent completed in {duration:.2f}s")
+```
+
+## 🐛 Common Issues
+
+### Issue: Tools Not Loading
+**Solution**: Check MCP server URLs and connectivity
+
+### Issue: Streaming Not Working
+**Solution**: Ensure using `astream()` not `ainvoke()`
+
+### Issue: Memory Growing
+**Solution**: Limit message history size, clear old checkpoints
+
+### Issue: Tool Execution Timeout
+**Solution**: Implement timeouts, handle async properly
+
+## 📚 Resources
+
+- [LangChain Documentation](https://python.langchain.com/)
+- [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
+- [DeepAgents GitHub](https://github.com/AutoAgents-Algorithm-Group/DeepAgents)
+- [MCP Specification](https://modelcontextprotocol.io/)

@@ -1,0 +1,463 @@
+---
+globs:
+  - "frontend/src/lib/db/**"
+  - "frontend/drizzle.config.ts"
+  - "frontend/src/app/api/**"
+---
+
+# Zeus Database Architecture
+
+## 🗄️ Database Stack
+
+Zeus uses a modern TypeScript-first database stack:
+
+- **Database**: PostgreSQL (Neon serverless)
+- **ORM**: Drizzle ORM (TypeScript)
+- **Migration Tool**: Drizzle Kit
+- **Client**: Neon serverless driver
+
+## 📁 Database Structure
+
+```
+frontend/src/lib/db/
+├── index.ts                 # Database client export
+├── schema/                  # Schema definitions by domain
+│   ├── index.ts            # Central export
+│   ├── user.ts             # Better Auth tables
+│   ├── chat.ts             # Chat sessions & messages
+│   ├── mcp.ts              # MCP server configurations
+│   └── langgraph.ts        # LangGraph checkpoints
+└── drizzle.config.ts       # Drizzle Kit configuration
+```
+
+## 🔧 Configuration
+
+### Drizzle Config
+Location: `frontend/drizzle.config.ts`
+
+```typescript
+import { defineConfig } from 'drizzle-kit'
+
+export default defineConfig({
+  schema: './src/lib/db/schema/**/*.ts',
+  out: './drizzle',
+  dialect: 'postgresql',
+  dbCredentials: {
+    url: process.env.DATABASE_URL!,
+  },
+  verbose: true,
+  strict: true,
+})
+```
+
+### Database Client
+Location: `frontend/src/lib/db/index.ts`
+
+```typescript
+import { drizzle } from 'drizzle-orm/neon-http'
+import { neon } from '@neondatabase/serverless'
+import * as schema from './schema'
+
+const sql = neon(process.env.DATABASE_URL!)
+export const db = drizzle(sql, { schema })
+```
+
+## 📊 Schema Organization
+
+### 1. User Schema (`schema/user.ts`)
+**Purpose**: Better Auth authentication tables
+
+**Tables**:
+- `user` - User accounts
+- `session` - Active sessions
+- `account` - OAuth provider accounts
+- `verification` - Email verification & password reset
+
+```typescript
+export const user = pgTable('user', {
+  id: text('id').primaryKey(),
+  name: text('name'),
+  email: text('email').notNull().unique(),
+  emailVerified: boolean('emailVerified').notNull().default(false),
+  image: text('image'),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})
+```
+
+### 2. Chat Schema (`schema/chat.ts`)
+**Purpose**: Chat session and message storage
+
+**Tables**:
+- `chat_session` - User chat sessions
+- `message` - Individual messages
+
+```typescript
+export const chatSession = pgTable('chat_session', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  title: text('title').notNull().default('New Chat'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  lastMessageAt: timestamp('last_message_at'),
+  metadata: jsonb('metadata').default('{}'),
+})
+
+export const message = pgTable('message', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  sessionId: text('session_id')
+    .notNull()
+    .references(() => chatSession.id, { onDelete: 'cascade' }),
+  role: text('role', { enum: ['user', 'assistant', 'system'] }).notNull(),
+  content: text('content').notNull(),
+  timestamp: timestamp('timestamp').notNull().defaultNow(),
+  metadata: jsonb('metadata').default('{}'),
+})
+```
+
+### 3. MCP Schema (`schema/mcp.ts`)
+**Purpose**: User-specific MCP server configurations
+
+**Table**: `mcp_server`
+
+```typescript
+export const mcpServer = pgTable('mcp_server', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  
+  // Server configuration
+  serverName: text('server_name').notNull(),
+  baseUrl: text('base_url').notNull(),
+  transportType: text('transport_type').notNull().default('streamable_http'),
+  apiKey: text('api_key'),
+  headers: jsonb('headers').$type<Record<string, string>>(),
+  
+  // Status tracking
+  enabled: boolean('enabled').notNull().default(false),
+  validated: boolean('validated').notNull().default(false),
+  status: text('status').notNull().default('pending'),
+  errorMessage: text('error_message'),
+  
+  // Tools from server
+  tools: jsonb('tools').$type<Array<{
+    name: string
+    description?: string
+  }>>().notNull().default(sql`'[]'::jsonb`),
+  
+  lastValidated: timestamp('last_validated'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+```
+
+### 4. LangGraph Schema (`schema/langgraph.ts`)
+**Purpose**: LangGraph checkpoint persistence
+
+**Tables**:
+- `langgraph_checkpoint` - Agent state checkpoints
+- `langgraph_write` - Write operation logs
+- `langgraph_store` - Long-term storage
+
+```typescript
+export const langgraphCheckpoint = pgTable('langgraph_checkpoint', {
+  threadId: text('thread_id').notNull(),
+  checkpointId: text('checkpoint_id').notNull(),
+  parentCheckpointId: text('parent_checkpoint_id'),
+  userId: text('user_id').references(() => user.id, { onDelete: 'cascade' }),
+  checkpoint: jsonb('checkpoint').notNull(),
+  metadata: jsonb('metadata').default('{}'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.threadId, table.checkpointId] })
+}))
+```
+
+## 🚀 Database Operations
+
+### Migration Workflow
+
+```bash
+# 1. Update schema files in src/lib/db/schema/
+
+# 2. Generate migration (or push directly)
+npx drizzle-kit generate
+
+# 3. Push changes to database
+export DATABASE_URL="postgresql://..."
+npx drizzle-kit push --force
+
+# 4. Verify changes
+npx drizzle-kit studio  # Opens database browser
+```
+
+### Quick Push (Development)
+```bash
+# Push schema changes without generating migrations
+npx drizzle-kit push --force
+```
+
+## 📝 Usage Examples
+
+### Querying Data
+```typescript
+import { db } from '@/lib/db'
+import { chatSession, message } from '@/lib/db/schema'
+import { eq, and, desc } from 'drizzle-orm'
+
+// Get user's chat sessions
+const sessions = await db.query.chatSession.findMany({
+  where: eq(chatSession.userId, userId),
+  orderBy: desc(chatSession.createdAt),
+})
+
+// Get messages for a session
+const messages = await db.query.message.findMany({
+  where: eq(message.sessionId, sessionId),
+  orderBy: desc(message.timestamp),
+})
+```
+
+### Inserting Data
+```typescript
+import { db } from '@/lib/db'
+import { chatSession, message } from '@/lib/db/schema'
+
+// Create new chat session
+const [newSession] = await db
+  .insert(chatSession)
+  .values({
+    userId: session.user.id,
+    title: 'New Chat',
+  })
+  .returning()
+
+// Add message to session
+await db.insert(message).values({
+  sessionId: newSession.id,
+  role: 'user',
+  content: 'Hello!',
+})
+```
+
+### Updating Data
+```typescript
+import { db } from '@/lib/db'
+import { mcpServer } from '@/lib/db/schema'
+import { eq } from 'drizzle-orm'
+
+// Update MCP server status
+await db
+  .update(mcpServer)
+  .set({
+    enabled: true,
+    validated: true,
+    status: 'connected',
+    tools: toolsList,
+    lastValidated: new Date(),
+  })
+  .where(eq(mcpServer.id, serverId))
+```
+
+### Deleting Data
+```typescript
+import { db } from '@/lib/db'
+import { chatSession } from '@/lib/db/schema'
+import { eq, and } from 'drizzle-orm'
+
+// Delete user's chat session (cascades to messages)
+await db
+  .delete(chatSession)
+  .where(
+    and(
+      eq(chatSession.id, sessionId),
+      eq(chatSession.userId, userId)
+    )
+  )
+```
+
+### Transactions
+```typescript
+import { db } from '@/lib/db'
+import { chatSession, message } from '@/lib/db/schema'
+
+await db.transaction(async (tx) => {
+  // Create session
+  const [session] = await tx
+    .insert(chatSession)
+    .values({ userId, title: 'New Chat' })
+    .returning()
+
+  // Add first message
+  await tx.insert(message).values({
+    sessionId: session.id,
+    role: 'system',
+    content: 'Welcome!',
+  })
+})
+```
+
+## 🔐 Security Patterns
+
+### 1. User Isolation
+Always filter by `userId` for user-specific data:
+
+```typescript
+// ✅ Correct - User can only access their own data
+const sessions = await db.query.chatSession.findMany({
+  where: and(
+    eq(chatSession.id, sessionId),
+    eq(chatSession.userId, currentUserId)
+  ),
+})
+
+// ❌ Wrong - No user check!
+const sessions = await db.query.chatSession.findMany({
+  where: eq(chatSession.id, sessionId),
+})
+```
+
+### 2. Cascade Deletes
+Properly configured foreign keys for automatic cleanup:
+
+```typescript
+// When user is deleted, all related data is automatically removed:
+userId: text('user_id')
+  .notNull()
+  .references(() => user.id, { onDelete: 'cascade' })
+```
+
+### 3. Session Verification
+All database operations must verify user session:
+
+```typescript
+export async function GET(req: NextRequest) {
+  const session = await auth.api.getSession({
+    headers: req.headers,
+  })
+
+  if (!session?.user) {
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401 }
+    )
+  }
+
+  // Now safe to query user's data
+  const data = await db.query.chatSession.findMany({
+    where: eq(chatSession.userId, session.user.id),
+  })
+
+  return NextResponse.json(data)
+}
+```
+
+## 🎯 API Route Patterns
+
+### Standard CRUD Pattern
+```typescript
+// GET - List user's items
+export async function GET(req: NextRequest) {
+  const session = await auth.api.getSession({ headers: req.headers })
+  if (!session?.user) return unauthorized()
+  
+  const items = await db.query.item.findMany({
+    where: eq(item.userId, session.user.id),
+  })
+  
+  return NextResponse.json({ items })
+}
+
+// POST - Create new item
+export async function POST(req: NextRequest) {
+  const session = await auth.api.getSession({ headers: req.headers })
+  if (!session?.user) return unauthorized()
+  
+  const body = await req.json()
+  
+  const [newItem] = await db
+    .insert(item)
+    .values({
+      userId: session.user.id,
+      ...body,
+    })
+    .returning()
+  
+  return NextResponse.json({ item: newItem })
+}
+
+// PUT - Update item
+export async function PUT(req: NextRequest) {
+  const session = await auth.api.getSession({ headers: req.headers })
+  if (!session?.user) return unauthorized()
+  
+  const { id, ...data } = await req.json()
+  
+  const [updated] = await db
+    .update(item)
+    .set(data)
+    .where(
+      and(
+        eq(item.id, id),
+        eq(item.userId, session.user.id)
+      )
+    )
+    .returning()
+  
+  return NextResponse.json({ item: updated })
+}
+
+// DELETE - Delete item
+export async function DELETE(req: NextRequest) {
+  const session = await auth.api.getSession({ headers: req.headers })
+  if (!session?.user) return unauthorized()
+  
+  const { searchParams } = new URL(req.url)
+  const id = searchParams.get('id')
+  
+  await db
+    .delete(item)
+    .where(
+      and(
+        eq(item.id, id),
+        eq(item.userId, session.user.id)
+      )
+    )
+  
+  return NextResponse.json({ success: true })
+}
+```
+
+## 🐛 Common Issues
+
+### Issue: Schema Not Found
+**Error**: `No schema files found for path config`
+**Solution**: Update `drizzle.config.ts` schema path to `'./src/lib/db/schema/**/*.ts'`
+
+### Issue: Foreign Key Constraint Failed
+**Error**: `foreign key constraint cannot be implemented`
+**Solution**: Ensure referenced table column types match (e.g., `text` user ID)
+
+### Issue: Migration Conflicts
+**Solution**: Use `--force` flag to skip confirmation: `npx drizzle-kit push --force`
+
+## 📚 Best Practices
+
+1. **Schema Organization**: Group related tables by domain
+2. **Type Safety**: Export TypeScript types from schema files
+3. **Default Values**: Use `$defaultFn()` for UUIDs, timestamps
+4. **JSONB**: Use for flexible metadata, typed with `$type<>()`
+5. **Cascading**: Set `onDelete: 'cascade'` for proper cleanup
+6. **Indexes**: Add indexes for frequently queried columns
+7. **Transactions**: Use for multi-step operations
+8. **Validation**: Validate data before database operations
+
+## 📖 Resources
+
+- [Drizzle ORM Documentation](https://orm.drizzle.team/)
+- [Neon Database Documentation](https://neon.tech/docs)
+- [PostgreSQL JSON Types](https://www.postgresql.org/docs/current/datatype-json.html)
