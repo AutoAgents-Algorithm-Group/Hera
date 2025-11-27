@@ -40,7 +40,9 @@ export default async function proxy(req: NextRequest) {
   const isSignInPage = pathname.includes('/sign-in')
   const isSignUpPage = pathname.includes('/sign-up')
   const isAuthCallback = pathname.includes('/auth/callback')
-  const isPublicPage = isSignInPage || isSignUpPage || isAuthCallback
+  
+  // 检查是否是需要保护的路由（只保护dashboard路由）
+  const isProtectedRoute = pathname.includes('/dashboard')
   
   // 检查 Better Auth session cookie
   // 注意：生产环境使用 __Secure- 前缀，开发环境不使用
@@ -53,25 +55,25 @@ export default async function proxy(req: NextRequest) {
   // console.log('[Proxy]', {
   //   pathname,
   //   hasSession,
-  //   isPublicPage,
+  //   isProtectedRoute,
   //   locale,
   //   cookies: req.cookies.getAll().map(c => c.name)
   // })
   
-  // 如果未登录且访问受保护页面，重定向到登录页
-  if (!hasSession && !isPublicPage) {
-    console.log('[Proxy] Redirecting to sign-in:', pathname)
+  // 只有访问受保护路由（dashboard）时才检查登录状态
+  if (!hasSession && isProtectedRoute) {
+    console.log('[Proxy] Protected route, redirecting to sign-in:', pathname)
     const signInUrl = new URL(`/${locale}/sign-in`, req.url)
-    // 保存原始访问路径
+    // 保存原始访问路径，登录后跳转回来
     signInUrl.searchParams.set('from', pathname)
     return NextResponse.redirect(signInUrl)
   }
   
-  // 如果已登录且访问认证页面，重定向到首页
+  // 如果已登录且访问认证页面，重定向到dashboard
   if (hasSession && (isSignInPage || isSignUpPage)) {
-    console.log('[Proxy] Already logged in, redirecting to home')
-    const homeUrl = new URL(`/${locale}`, req.url)
-    return NextResponse.redirect(homeUrl)
+    console.log('[Proxy] Already logged in, redirecting to dashboard')
+    const dashboardUrl = new URL(`/${locale}/dashboard`, req.url)
+    return NextResponse.redirect(dashboardUrl)
   }
   
   return response

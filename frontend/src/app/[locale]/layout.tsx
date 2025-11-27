@@ -4,6 +4,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { locales } from '@/i18n/request';
+import { QueryProvider } from '@/components/providers/query-provider';
 import "../globals.css";
 import { Toaster } from "react-hot-toast";
 
@@ -42,8 +43,10 @@ export default async function LocaleLayout({
     <html lang={locale}>
       <body className={inter.className} suppressHydrationWarning>
         <NextIntlClientProvider messages={messages}>
-          <Toaster position="top-center" reverseOrder={false} />
-          <main className="min-h-screen">{children}</main>
+          <QueryProvider>
+            <Toaster position="top-center" reverseOrder={false} />
+            <main className="min-h-screen">{children}</main>
+          </QueryProvider>
         </NextIntlClientProvider>
       </body>
     </html>
